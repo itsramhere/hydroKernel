@@ -80,6 +80,11 @@ class TestPhase2TelemetryAndStreaming(unittest.TestCase):
         pub_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         try:
             pub_client.connect("localhost", 1883, keepalive=10)
+        except (ConnectionRefusedError, OSError):
+            receiver.stop()
+            self.skipTest("Mosquitto MQTT broker not running on localhost:1883 (outside Docker)")
+
+        try:
             pub_client.publish("sensors/rainfall/TEST_STATION_001", json.dumps(test_payload))
             time.sleep(0.5)
 
@@ -88,7 +93,10 @@ class TestPhase2TelemetryAndStreaming(unittest.TestCase):
             self.assertEqual(latest.get("station_id"), "TEST_STATION_001")
             self.assertEqual(latest.get("rate_mm_hr"), 42.0)
         finally:
-            pub_client.disconnect()
+            try:
+                pub_client.disconnect()
+            except Exception:
+                pass
             receiver.stop()
 
 

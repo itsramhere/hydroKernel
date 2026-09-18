@@ -21,7 +21,7 @@ logger = logging.getLogger("TelemetryReceiver")
 class RainGaugeTelemetryReceiver:
     """Listens for FreeRTOS edge telemetry over local MQTT broker."""
 
-    def __init__(self, host: str = "localhost", port: int = 1883, topic: str = "sensors/rainfall/#"):
+    def __init__(self, host: str = "localhost", port: int = 1883, topic: str = "sensors/#"):
         self.host = host
         self.port = port
         self.topic = topic
@@ -40,12 +40,20 @@ class RainGaugeTelemetryReceiver:
     def _on_message(self, client, userdata, msg):
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
+            rate = payload.get("intensity_mm_h", payload.get("rate_mm_hr", 0.0))
+            accum = payload.get("cumulative_6h_mm", payload.get("accum_6hr_mm", 0.0))
+            # Standardize keys in telemetry dictionary
+            payload["rate_mm_hr"] = float(rate)
+            payload["intensity_mm_h"] = float(rate)
+            payload["accum_6hr_mm"] = float(accum)
+            payload["cumulative_6h_mm"] = float(accum)
+
             with self._lock:
                 self.latest_telemetry = payload
             logger.info("Received edge telemetry from %s: rate=%.2f mm/hr, 6hr=%.2f mm",
                         payload.get("station_id"),
-                        payload.get("rate_mm_hr", 0.0),
-                        payload.get("accum_6hr_mm", 0.0))
+                        rate,
+                        accum)
         except Exception as ex:
             logger.warning("Failed to decode telemetry payload: %s", ex)
 

@@ -1,12 +1,15 @@
 """
 ONNX Model Generation and Weight Seeding for Hydrological Surrogate (Phase 3).
 
-Seeds initial convolutional kernels with depression-accumulation weights
-so the model produces physically plausible inundation depths immediately
-without blocking on a long training cycle.
+Supports:
+1. Physics-seeded convolutional kernel construction for ultra-low latency (<5ms)
+   guaranteeing physics-invariant water depth (h >= 0.0m) and depression accumulation.
+2. Dynamic PyTorch FloodUNet export with opset_version=14, dynamic_axes,
+   input "input_tensor", and output "water_depth".
 """
 
 import os
+import sys
 import logging
 import numpy as np
 import onnx
@@ -21,6 +24,7 @@ logger = logging.getLogger("ExportONNX")
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(CURRENT_DIR, "models")
 OUTPUT_ONNX_PATH = os.path.join(MODELS_DIR, "flood_unet.onnx")
+OUTPUT_PTH_PATH = os.path.join(MODELS_DIR, "flood_unet.pth")
 
 
 def build_physics_seeded_onnx(output_path: str = OUTPUT_ONNX_PATH) -> str:
@@ -30,16 +34,18 @@ def build_physics_seeded_onnx(output_path: str = OUTPUT_ONNX_PATH) -> str:
     - Kernel captures topographic concave depressions (Laplacian of DEM).
     - Attenuates accumulation along steep topographic slopes.
     - Accumulates rainfall volume into continuous surface water depth (meters).
+    - Uses opset_version=14, dynamic axes for (B, C, H, W),
+      input "input_tensor", output "water_depth".
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    logger.info("Constructing physics-seeded 2D hydrological surrogate ONNX model...")
+    logger.info("Constructing physics-seeded 2D hydrological surrogate ONNX model (opset 14)...")
 
-    # Inputs and Outputs with dynamic spatial dimensions
+    # Dynamic spatial axes definition
     input_tensor = helper.make_tensor_value_info(
-        "input", TensorProto.FLOAT, [1, 3, None, None]
+        "input_tensor", TensorProto.FLOAT, ["batch_size", 3, "height", "width"]
     )
     output_tensor = helper.make_tensor_value_info(
-        "water_depth", TensorProto.FLOAT, [1, 1, None, None]
+        "water_depth", TensorProto.FLOAT, ["batch_size", 1, "height", "width"]
     )
 
     # -------------------------------------------------------------
@@ -104,7 +110,7 @@ def build_physics_seeded_onnx(output_path: str = OUTPUT_ONNX_PATH) -> str:
     # Build computation nodes
     node_conv1 = helper.make_node(
         "Conv",
-        inputs=["input", "conv1_w", "conv1_b"],
+        inputs=["input_tensor", "conv1_w", "conv1_b"],
         outputs=["conv1_out"],
         pads=[1, 1, 1, 1],
         name="conv1_depression_encoder"
@@ -122,7 +128,7 @@ def build_physics_seeded_onnx(output_path: str = OUTPUT_ONNX_PATH) -> str:
         pads=[1, 1, 1, 1],
         name="conv2_depth_decoder"
     )
-    # Relu ensures non-negative continuous water depth
+    # Terminal Relu ensures non-negative continuous water depth h >= 0.0m
     node_relu2 = helper.make_node(
         "Relu",
         inputs=["conv2_out"],
@@ -139,22 +145,72 @@ def build_physics_seeded_onnx(output_path: str = OUTPUT_ONNX_PATH) -> str:
         initializer=[init_conv1_w, init_conv1_b, init_conv2_w, init_conv2_b]
     )
 
-    # Model Definition (opset 17)
+    # Model Definition (opset 14 per specification)
     model_def = helper.make_model(
         graph_def,
         producer_name="flood-pipeline-ml-engine",
-        opset_imports=[helper.make_opsetid("", 17)]
+        opset_imports=[helper.make_opsetid("", 14)]
     )
 
     # Validate ONNX specification
     onnx.checker.check_model(model_def)
     onnx.save(model_def, output_path)
 
-    file_size_kb = os.path.getsize(output_path) / 1024.0
-    logger.info("Successfully exported physics-seeded ONNX model to %s (%.1f KB)", output_path, file_size_kb)
+    file_size_mb = os.path.getsize(output_path) / (1024.0 * 1024.0)
+    logger.info("Successfully exported physics-seeded ONNX model to %s (%.2f MB, limit < 50MB)",
+                output_path, file_size_mb)
+    assert file_size_mb < 50.0, f"ONNX model exceeds 50MB limit: {file_size_mb:.2f} MB"
+    return output_path
+
+
+def export_pytorch_unet_to_onnx(
+    pth_path: str = OUTPUT_PTH_PATH,
+    output_path: str = os.path.join(MODELS_DIR, "flood_unet_pytorch.onnx")
+) -> str:
+    """
+    Exports PyTorch FloodUNet architecture to ONNX with opset_version=14,
+    input 'input_tensor', output 'water_depth', and dynamic axes.
+    """
+    import torch
+    from unet import FloodUNet
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    model = FloodUNet(in_channels=3, out_channels=1)
+
+    if os.path.exists(pth_path):
+        logger.info("Loading weights from %s", pth_path)
+        model.load_state_dict(torch.load(pth_path, map_location="cpu", weights_only=True))
+    else:
+        logger.info("PyTorch checkpoint %s not found, exporting initialized architecture.", pth_path)
+
+    model.eval()
+    dummy_input = torch.randn(1, 3, 256, 256, dtype=torch.float32)
+
+    torch.onnx.export(
+        model,
+        dummy_input,
+        output_path,
+        export_params=True,
+        opset_version=14,
+        do_constant_folding=True,
+        input_names=["input_tensor"],
+        output_names=["water_depth"],
+        dynamic_axes={
+            "input_tensor": {0: "batch_size", 2: "height", 3: "width"},
+            "water_depth": {0: "batch_size", 2: "height", 3: "width"}
+        },
+        dynamo=False
+    )
+
+    file_size_mb = os.path.getsize(output_path) / (1024.0 * 1024.0)
+    logger.info("Exported PyTorch FloodUNet to %s (%.2f MB)", output_path, file_size_mb)
+    assert file_size_mb < 50.0, f"PyTorch ONNX model exceeds 50MB limit: {file_size_mb:.2f} MB"
+
+    onnx_model = onnx.load(output_path)
+    onnx.checker.check_model(onnx_model)
     return output_path
 
 
 if __name__ == "__main__":
     path = build_physics_seeded_onnx()
-    print("Exported ONNX model successfully:", path)
+    print("Exported ONNX model successfully to:", path)

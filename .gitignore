@@ -11,6 +11,8 @@ __pycache__/
 *.out
 rain_gauge_posix
 **/sensor/rain_gauge_posix
+powershell.cmd
+**/powershell.cmd
 
 # Third-party downloaded binaries
 bin/

@@ -116,10 +116,11 @@ class TerrainStreamEngine:
         """
         dy, dx = np.gradient(dem)
         slope = np.sqrt(dx**2 + dy**2)
-        # Normalize slope
-        max_slope = slope.max()
+        # Normalize slope S = ||grad(Z)|| in [0.0, 1.0]
+        max_slope = float(slope.max())
         if max_slope > 0:
-            slope = slope / max_slope
+            slope = slope / (max_slope + 1e-6)
+        slope = np.clip(slope, 0.0, 1.0)
         return slope.astype(np.float32)
 
     def generate_precipitation_grid(
@@ -130,12 +131,15 @@ class TerrainStreamEngine:
     ) -> np.ndarray:
         """
         Resamples NOAA 6-hour forecast and bias-corrects with ground-truth FreeRTOS rain gauge telemetry.
+        Enforces Channel 2 contract: P in [0.0, 200.0] mm.
         """
         grid = np.full(dem_shape, base_forecast_mm, dtype=np.float32)
 
         if rain_gauge_telemetry:
-            gauge_rate = float(rain_gauge_telemetry.get("rate_mm_hr", 0.0))
-            accum_6hr = float(rain_gauge_telemetry.get("accum_6hr_mm", base_forecast_mm))
+            accum_6hr = float(
+                rain_gauge_telemetry.get("cumulative_6h_mm",
+                rain_gauge_telemetry.get("accum_6hr_mm", base_forecast_mm))
+            )
             # Bias correction factor between edge telemetry and satellite forecast
             if accum_6hr > 0:
                 correction_factor = accum_6hr / max(base_forecast_mm, 1.0)
@@ -143,7 +147,9 @@ class TerrainStreamEngine:
                 logger.info("Applied FreeRTOS rain gauge bias correction (factor: %.2f, 6hr: %.1fmm)",
                             correction_factor, accum_6hr)
 
-        return grid
+        # Invariant: P in [0.0, 200.0] mm
+        grid = np.clip(grid, 0.0, 200.0)
+        return grid.astype(np.float32)
 
     def prepare_input_tensor(
         self,
@@ -151,20 +157,21 @@ class TerrainStreamEngine:
     ) -> Tuple[np.ndarray, Any]:
         """
         Prepares standard (1, 3, H, W) input tensor for U-Net surrogate model:
-        - Channel 0: Normalized DEM Elevation
-        - Channel 1: Topographic Slope Gradient
-        - Channel 2: Resampled Forecast Precipitation (mm)
+        - Channel 0: Normalized Bare-Earth Elevation Z_norm = (Z - min Z) / (max Z - min Z + epsilon)
+        - Channel 1: Topographic Slope Gradient S = ||grad(Z)|| in [0.0, 1.0]
+        - Channel 2: Cumulative 6-hour precipitation P in [0.0, 200.0] mm fused with edge gauge ground truth.
         Returns tensor and geospatial affine transform.
         """
         dem, transform = self.fetch_dem_window()
         slope = self.compute_slope_gradient(dem)
         precip = self.generate_precipitation_grid(dem.shape, rain_gauge_telemetry=rain_gauge_telemetry)
 
-        # Normalize elevation to [0, 1] range for neural network stability
-        min_elev, max_elev = dem.min(), dem.max()
-        norm_dem = (dem - min_elev) / max(max_elev - min_elev, 1e-4)
+        # Normalize elevation to [0, 1] range: Z_norm = (Z - min Z) / (max Z - min Z + epsilon)
+        min_elev, max_elev = float(dem.min()), float(dem.max())
+        norm_dem = (dem - min_elev) / (max_elev - min_elev + 1e-6)
+        norm_dem = np.clip(norm_dem, 0.0, 1.0).astype(np.float32)
 
-        # Stack into (1, 3, H, W)
+        # Stack into (1, 3, H, W) float32
         tensor = np.stack([norm_dem, slope, precip], axis=0)
         tensor = np.expand_dims(tensor, axis=0).astype(np.float32)
 
