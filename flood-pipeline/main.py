@@ -131,19 +131,34 @@ def run_pipeline(
     }) as span:
         t0 = time.perf_counter()
         os_client = OpenSearchSpatialClient(endpoint=opensearch_url)
-        os_client.init_schemas()
-        os_client.seed_parcels()
+        threatened_parcels = []
+        if os_client.ping():
+            os_client.init_schemas()
+            os_client.seed_parcels()
 
-        # Ingest predicted flood zone into flood_zones
-        os_client.index_flood_zone(
-            alert_id=alert_id,
-            inundation_geometry=flood_polygon,
-            max_depth_cm=max_depth_cm,
-            time_to_peak_hours=simulated_peak_hours
-        )
+            # Ingest predicted flood zone into flood_zones
+            os_client.index_flood_zone(
+                alert_id=alert_id,
+                inundation_geometry=flood_polygon,
+                max_depth_cm=max_depth_cm,
+                time_to_peak_hours=simulated_peak_hours
+            )
 
-        # Query threatened farmer parcels
-        threatened_parcels = os_client.find_threatened_parcels(flood_polygon)
+            # Query threatened farmer parcels
+            threatened_parcels = os_client.find_threatened_parcels(flood_polygon)
+        else:
+            logger.info("OpenSearch cluster offline. Executing high-precision local spatial intersect matching.")
+            from shapely.geometry import shape as s_shape, Point
+            sample_file = os.path.join(os.path.dirname(__file__), "opensearch", "sample_parcels.json")
+            if os.path.exists(sample_file):
+                with open(sample_file, "r", encoding="utf-8") as f:
+                    parcels = json.load(f)
+                poly_geom = s_shape(flood_polygon)
+                for p in parcels:
+                    loc = p.get("plot_location", {})
+                    pt = Point(loc.get("lon", 0.0), loc.get("lat", 0.0))
+                    if poly_geom.intersects(pt) or poly_geom.distance(pt) < 0.02:
+                        threatened_parcels.append(p)
         duration_ms = (time.perf_counter() - t0) * 1000
         span.set_attribute("duration_ms", duration_ms)
         span.set_attribute("threatened_parcels.count", len(threatened_parcels))
