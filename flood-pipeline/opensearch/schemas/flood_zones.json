@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    }
+  },
+  "mappings": {
+    "properties": {
+      "alert_id": {
+        "type": "keyword"
+      },
+      "timestamp": {
+        "type": "date"
+      },
+      "max_depth_cm": {
+        "type": "float"
+      },
+      "time_to_peak_hours": {
+        "type": "integer"
+      },
+      "inundation_geometry": {
+        "type": "geo_shape"
+      }
+    }
+  }
+}

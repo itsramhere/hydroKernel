@@ -1,0 +1,37 @@
+[
+  {
+    "farmer_id": "FARMER_WGL_001",
+    "farmer_name": "K. Srinivas Rao",
+    "phone_number": "+919876543201",
+    "sub_district": "Warangal_Rural",
+    "plot_location": { "lat": 17.9750, "lon": 79.5950 }
+  },
+  {
+    "farmer_id": "FARMER_WGL_002",
+    "farmer_name": "M. Renuka Devi",
+    "phone_number": "+919876543202",
+    "sub_district": "Warangal_Rural",
+    "plot_location": { "lat": 17.9820, "lon": 79.6050 }
+  },
+  {
+    "farmer_id": "FARMER_WGL_003",
+    "farmer_name": "T. Anjaiah",
+    "phone_number": "+919876543203",
+    "sub_district": "Warangal_Rural",
+    "plot_location": { "lat": 17.9680, "lon": 79.6100 }
+  },
+  {
+    "farmer_id": "FARMER_WGL_004",
+    "farmer_name": "B. Mallesh",
+    "phone_number": "+919876543204",
+    "sub_district": "Warangal_Rural",
+    "plot_location": { "lat": 17.9900, "lon": 79.5850 }
+  },
+  {
+    "farmer_id": "FARMER_WGL_005",
+    "farmer_name": "P. Laxmi",
+    "phone_number": "+919876543205",
+    "sub_district": "Warangal_Highland",
+    "plot_location": { "lat": 18.0500, "lon": 79.7000 }
+  }
+]

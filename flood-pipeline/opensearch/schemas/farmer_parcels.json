@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    }
+  },
+  "mappings": {
+    "properties": {
+      "farmer_id": {
+        "type": "keyword"
+      },
+      "farmer_name": {
+        "type": "text"
+      },
+      "phone_number": {
+        "type": "keyword"
+      },
+      "sub_district": {
+        "type": "keyword"
+      },
+      "plot_location": {
+        "type": "geo_point"
+      }
+    }
+  }
+}

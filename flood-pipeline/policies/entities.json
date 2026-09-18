@@ -1,0 +1,17 @@
+[
+  {
+    "uid": { "type": "Role", "id": "MLHydrologyAgent" },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": { "type": "Action", "id": "BroadcastAlert" },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": { "type": "System", "id": "AlertBroadcastSystem" },
+    "attrs": {},
+    "parents": []
+  }
+]

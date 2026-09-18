@@ -1,0 +1,54 @@
+# Byte-compiled / optimized / Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# C / C++ compilation artifacts
+*.o
+*.obj
+*.exe
+*.out
+rain_gauge_posix
+**/sensor/rain_gauge_posix
+
+# Third-party downloaded binaries
+bin/
+**/bin/cedar.exe
+
+# Firecracker MicroVM large kernel & rootfs binaries (>180MB total)
+microvm/vmlinux
+**/microvm/vmlinux
+microvm/rootfs.ext4
+**/microvm/rootfs.ext4
+*.ext4
+*.socket
+
+# Environments & Virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+plan.md
+
+# Logs & Temporary runtime files
+*.log
+*.tmp
+*.pid
+temp_*
+test_*_ctx.json
+
+# Operating System & IDE artifacts
+.DS_Store
+Thumbs.db
+ehthumbs.db
+.vscode/
+.idea/
+*.swp
+*~

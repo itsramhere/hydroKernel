@@ -1,0 +1,21 @@
+{
+  "type": "Feature",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [79.58, 17.96],
+        [79.62, 17.96],
+        [79.62, 18.00],
+        [79.58, 18.00],
+        [79.58, 17.96]
+      ]
+    ]
+  },
+  "properties": {
+    "alert_id": "ALERT_WARANGAL_MOCK_001",
+    "basin": "Warangal_Rural",
+    "max_depth_cm": 28.5,
+    "time_to_peak_hours": 4
+  }
+}
